@@ -7,17 +7,11 @@ from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 DNSE_TOKEN = os.getenv("DNSE_TOKEN")
 
-
-
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
-
-
 
 DATA_FILE = "sectors.json"
 
@@ -29,8 +23,6 @@ sector_bank = {
     "SME": "MBB",
     "Tiêu dùng": "HDB"
 }
-
-
 
 def load_data():
 
@@ -64,13 +56,25 @@ def get_dnse_portfolio():
     url = "https://api.lightspeed.dnse.com.vn/positions"
 
     headers = {
-        "Authorization": f"Bearer {DNSE_TOKEN}"
+        "Authorization": f"Bearer {DNSE_TOKEN}",
+        "Content-Type": "application/json"
     }
 
     try:
-        res = requests.get(url,headers=headers)
+
+        res = requests.get(url, headers=headers)
+
+        print("DNSE STATUS:", res.status_code)
+        print("DNSE RESPONSE:", res.text)
+
+        if res.status_code != 200:
+            return None
+
         return res.json()
-    except:
+
+    except Exception as e:
+
+        print("DNSE ERROR:", e)
         return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
