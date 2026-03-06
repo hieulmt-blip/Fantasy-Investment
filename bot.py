@@ -78,8 +78,7 @@ def get_dnse_portfolio():
         hashlib.sha256
     ).hexdigest()
 
-    url = f"https://api.dnse.com.vn/accounts/{account}/positions?{payload}&signature={signature}"
-
+    url = f"https://api.lightspeed.dnse.com.vn/accounts/{account}/positions?{payload}&signature={signature}"
     headers = {
         "X-API-KEY": api_key
     }
