@@ -1,27 +1,35 @@
-# ================================
+# ==============================
 # IMPORT
-# ================================
+# ==============================
 import os
 import json
+import asyncio
 import requests
-import telebot
-from telebot import types
+import uvicorn
 from fastapi import FastAPI, Request
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 
-# ================================
-# CONFIG / ENV
-# ================================
-TOKEN = os.getenv("BOT_TOKEN")
+# ==============================
+# ENV
+# ==============================
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 DNSE_TOKEN = os.getenv("DNSE_TOKEN")
 
-bot = telebot.TeleBot(TOKEN)
-app = FastAPI()
+
+# ==============================
+# TELEGRAM APP
+# ==============================
+tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 
-# ================================
+# ==============================
 # DATA
-# ================================
+# ==============================
+DATA_FILE = "sectors.json"
+
 sector_bank = {
     "Chứng khoán": "SSI",
     "BĐS": "TCB",
@@ -31,12 +39,10 @@ sector_bank = {
     "Tiêu dùng": "HDB"
 }
 
-DATA_FILE = "sectors.json"
 
-
-# ================================
-# UTIL FUNCTIONS
-# ================================
+# ==============================
+# DATA FUNCTIONS
+# ==============================
 def load_data():
 
     if not os.path.exists(DATA_FILE):
@@ -63,9 +69,9 @@ def save_data(data):
         json.dump(data,f,indent=4)
 
 
-# ================================
+# ==============================
 # DNSE API
-# ================================
+# ==============================
 def get_dnse_portfolio():
 
     url = "https://api.lightspeed.dnse.com.vn/positions"
@@ -75,50 +81,24 @@ def get_dnse_portfolio():
     }
 
     try:
-
         res = requests.get(url,headers=headers)
         return res.json()
-
     except:
-
         return None
 
 
-# ================================
-# TELEGRAM HANDLERS
-# ================================
+# ==============================
+# TELEGRAM COMMANDS
+# ==============================
 
-@bot.message_handler(commands=['add'])
-def add_stock(message):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    data = load_data()
-
-    cmd = message.text.split()
-
-    if len(cmd) < 3:
-        bot.reply_to(
-            message,
-            "❌ Cú pháp: /add SYMBOL NGANH\nVí dụ: /add SSI Chứng_khoán"
-        )
-        return
-
-    symbol = cmd[1].upper()
-    sector = cmd[2].replace("_"," ")
-
-    if sector not in data:
-        bot.reply_to(message,"❌ ngành không tồn tại")
-        return
-
-    if symbol not in data[sector]:
-        data[sector].append(symbol)
-
-    save_data(data)
-
-    bot.reply_to(message,f"✅ thêm {symbol} vào {sector}")
+    await update.message.reply_text(
+        "📊 DNSE Portfolio Bot Ready"
+    )
 
 
-@bot.message_handler(commands=['portfolio'])
-def portfolio(message):
+async def portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = load_data()
 
@@ -137,16 +117,48 @@ def portfolio(message):
 
         msg += "\n"
 
-    bot.send_message(message.chat.id,msg)
+    await update.message.reply_text(msg)
 
 
-@bot.message_handler(commands=['sync'])
-def sync_dnse(message):
+async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    data = load_data()
+
+    if len(context.args) < 2:
+
+        await update.message.reply_text(
+            "❌ /add SYMBOL SECTOR\nVD: /add SSI Chứng_khoán"
+        )
+        return
+
+    symbol = context.args[0].upper()
+    sector = context.args[1].replace("_"," ")
+
+    if sector not in data:
+
+        await update.message.reply_text("❌ ngành không tồn tại")
+        return
+
+    if symbol not in data[sector]:
+
+        data[sector].append(symbol)
+
+    save_data(data)
+
+    await update.message.reply_text(
+        f"✅ thêm {symbol} vào {sector}"
+    )
+
+
+async def sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     portfolio = get_dnse_portfolio()
 
     if portfolio is None:
-        bot.reply_to(message,"❌ không lấy được dữ liệu DNSE")
+
+        await update.message.reply_text(
+            "❌ không đọc được DNSE"
+        )
         return
 
     msg = "📊 DANH MỤC DNSE\n\n"
@@ -162,21 +174,58 @@ def sync_dnse(message):
 
     except:
 
-        msg = "❌ dữ liệu DNSE sai format"
+        msg = "❌ DNSE format lỗi"
 
-    bot.send_message(message.chat.id,msg)
+    await update.message.reply_text(msg)
 
 
-# ================================
-# FASTAPI WEBHOOK
-# ================================
-@app.post("/webhook")
+# ==============================
+# HANDLERS
+# ==============================
+tg_app.add_handler(CommandHandler("start", start))
+tg_app.add_handler(CommandHandler("portfolio", portfolio))
+tg_app.add_handler(CommandHandler("add", add))
+tg_app.add_handler(CommandHandler("sync", sync))
+
+
+# ==============================
+# FASTAPI
+# ==============================
+fastapi_app = FastAPI()
+
+
+@fastapi_app.on_event("startup")
+async def startup():
+
+    await tg_app.initialize()
+    await tg_app.start()
+
+    await tg_app.bot.set_webhook(
+        f"{WEBHOOK_URL}/webhook"
+    )
+
+    print("✅ Bot ready")
+
+
+@fastapi_app.post("/webhook")
 async def telegram_webhook(req: Request):
 
-    json_data = await req.json()
+    data = await req.json()
 
-    update = types.Update.de_json(json_data)
+    update = Update.de_json(data, tg_app.bot)
 
-    bot.process_new_updates([update])
+    await tg_app.process_update(update)
 
     return {"ok": True}
+
+
+# ==============================
+# RUN
+# ==============================
+if __name__ == "__main__":
+
+    uvicorn.run(
+        fastapi_app,
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT",10000))
+    )
