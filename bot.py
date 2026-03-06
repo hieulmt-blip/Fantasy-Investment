@@ -1,4 +1,5 @@
 import telebot
+from telebot import types
 import json
 import os
 from fastapi import FastAPI, Request
@@ -71,9 +72,9 @@ def portfolio(message):
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
 
-    data = await req.json()
+    json_data = await req.json()
 
-    update = telebot.types.Update.de_json(data)
+    update = types.Update.de_json(json_data)
 
     bot.process_new_updates([update])
 
