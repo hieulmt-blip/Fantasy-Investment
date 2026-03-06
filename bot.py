@@ -70,7 +70,7 @@ def get_dnse_portfolio():
 
     timestamp = str(int(time.time()*1000))
 
-    payload = f"accountNo={account}&timestamp={timestamp}"
+    payload = f"timestamp={timestamp}"
 
     signature = hmac.new(
         secret.encode(),
@@ -78,28 +78,21 @@ def get_dnse_portfolio():
         hashlib.sha256
     ).hexdigest()
 
-    url = f"https://api.dnse.com.vn/v2/positions?{payload}&signature={signature}"
+    url = f"https://api.dnse.com.vn/accounts/{account}/positions?{payload}&signature={signature}"
 
     headers = {
         "X-API-KEY": api_key
     }
 
-    try:
+    res = requests.get(url, headers=headers)
 
-        res = requests.get(url, headers=headers)
+    print("DNSE STATUS:", res.status_code)
+    print("DNSE RESPONSE:", res.text)
 
-        print("DNSE STATUS:", res.status_code)
-        print("DNSE RESPONSE:", res.text)
-
-        if res.status_code != 200:
-            return None
-
-        return res.json()
-
-    except Exception as e:
-
-        print("DNSE ERROR:", e)
+    if res.status_code != 200:
         return None
+
+    return res.json()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
