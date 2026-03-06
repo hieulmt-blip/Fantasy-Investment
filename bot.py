@@ -53,7 +53,7 @@ def save_data(data):
 
 def get_dnse_portfolio():
 
-    url = "https://api.lightspeed.dnse.com.vn/positions"
+    url = "https://api.dnse.com.vn/positions"
 
     headers = {
         "Authorization": f"Bearer {DNSE_TOKEN}",
