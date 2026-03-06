@@ -1,30 +1,92 @@
+# ================================
+# IMPORT
+# ================================
+import os
+import json
+import requests
 import telebot
 from telebot import types
-import json
-import os
 from fastapi import FastAPI, Request
 
+
+# ================================
+# CONFIG / ENV
+# ================================
 TOKEN = os.getenv("BOT_TOKEN")
+DNSE_TOKEN = os.getenv("DNSE_TOKEN")
 
 bot = telebot.TeleBot(TOKEN)
 app = FastAPI()
 
+
+# ================================
+# DATA
+# ================================
 sector_bank = {
-    "Chứng khoán": "TCB",
+    "Chứng khoán": "SSI",
     "BĐS": "TCB",
     "Doanh nghiệp": "VCB",
     "Tín dụng": "VPB",
     "SME": "MBB",
-    "Xuất khẩu": "BID"
+    "Tiêu dùng": "HDB"
 }
 
+DATA_FILE = "sectors.json"
+
+
+# ================================
+# UTIL FUNCTIONS
+# ================================
 def load_data():
-    with open("sectors.json","r") as f:
+
+    if not os.path.exists(DATA_FILE):
+
+        data = {
+            "Chứng khoán": [],
+            "BĐS": [],
+            "Doanh nghiệp": [],
+            "Tín dụng": [],
+            "SME": [],
+            "Tiêu dùng": []
+        }
+
+        save_data(data)
+        return data
+
+    with open(DATA_FILE,"r") as f:
         return json.load(f)
 
+
 def save_data(data):
-    with open("sectors.json","w") as f:
+
+    with open(DATA_FILE,"w") as f:
         json.dump(data,f,indent=4)
+
+
+# ================================
+# DNSE API
+# ================================
+def get_dnse_portfolio():
+
+    url = "https://api.lightspeed.dnse.com.vn/positions"
+
+    headers = {
+        "Authorization": f"Bearer {DNSE_TOKEN}"
+    }
+
+    try:
+
+        res = requests.get(url,headers=headers)
+        return res.json()
+
+    except:
+
+        return None
+
+
+# ================================
+# TELEGRAM HANDLERS
+# ================================
 
 @bot.message_handler(commands=['add'])
 def add_stock(message):
@@ -32,6 +94,13 @@ def add_stock(message):
     data = load_data()
 
     cmd = message.text.split()
+
+    if len(cmd) < 3:
+        bot.reply_to(
+            message,
+            "❌ Cú pháp: /add SYMBOL NGANH\nVí dụ: /add SSI Chứng_khoán"
+        )
+        return
 
     symbol = cmd[1].upper()
     sector = cmd[2].replace("_"," ")
@@ -47,6 +116,7 @@ def add_stock(message):
 
     bot.reply_to(message,f"✅ thêm {symbol} vào {sector}")
 
+
 @bot.message_handler(commands=['portfolio'])
 def portfolio(message):
 
@@ -57,7 +127,7 @@ def portfolio(message):
     for sector,stocks in data.items():
 
         msg += f"🏷 {sector}\n"
-        msg += f"🏦 Bank: {sector_bank.get(sector,'')}\n"
+        msg += f"🏛 Đại diện: {sector_bank.get(sector,'')}\n"
 
         if len(stocks)==0:
             msg += "- (trống)\n"
@@ -69,6 +139,37 @@ def portfolio(message):
 
     bot.send_message(message.chat.id,msg)
 
+
+@bot.message_handler(commands=['sync'])
+def sync_dnse(message):
+
+    portfolio = get_dnse_portfolio()
+
+    if portfolio is None:
+        bot.reply_to(message,"❌ không lấy được dữ liệu DNSE")
+        return
+
+    msg = "📊 DANH MỤC DNSE\n\n"
+
+    try:
+
+        for stock in portfolio["data"]:
+
+            symbol = stock["symbol"]
+            qty = stock["quantity"]
+
+            msg += f"{symbol} : {qty}\n"
+
+    except:
+
+        msg = "❌ dữ liệu DNSE sai format"
+
+    bot.send_message(message.chat.id,msg)
+
+
+# ================================
+# FASTAPI WEBHOOK
+# ================================
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
 
