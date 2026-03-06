@@ -1,6 +1,3 @@
-# ==============================
-# IMPORT
-# ==============================
 import os
 import json
 import asyncio
@@ -11,23 +8,17 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 
-# ==============================
-# ENV
-# ==============================
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 DNSE_TOKEN = os.getenv("DNSE_TOKEN")
 
 
-# ==============================
-# TELEGRAM APP
-# ==============================
+
 tg_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 
-# ==============================
-# DATA
-# ==============================
+
 DATA_FILE = "sectors.json"
 
 sector_bank = {
@@ -40,9 +31,7 @@ sector_bank = {
 }
 
 
-# ==============================
-# DATA FUNCTIONS
-# ==============================
+
 def load_data():
 
     if not os.path.exists(DATA_FILE):
@@ -69,9 +58,7 @@ def save_data(data):
         json.dump(data,f,indent=4)
 
 
-# ==============================
-# DNSE API
-# ==============================
+
 def get_dnse_portfolio():
 
     url = "https://api.lightspeed.dnse.com.vn/positions"
@@ -86,11 +73,6 @@ def get_dnse_portfolio():
     except:
         return None
 
-
-# ==============================
-# TELEGRAM COMMANDS
-# ==============================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
@@ -100,25 +82,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def portfolio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    data = load_data()
+    portfolio = get_dnse_portfolio()
 
-    msg = "📊 PORTFOLIO THEO NGÀNH\n\n"
+    if portfolio is None:
 
-    for sector,stocks in data.items():
+        await update.message.reply_text(
+            "❌ không đọc được DNSE"
+        )
+        return
 
-        msg += f"🏷 {sector}\n"
-        msg += f"🏛 Đại diện: {sector_bank.get(sector,'')}\n"
+    msg = "📊 PORTFOLIO DNSE\n\n"
 
-        if len(stocks)==0:
-            msg += "- (trống)\n"
+    try:
 
-        for s in stocks:
-            msg += f"- {s}\n"
+        for stock in portfolio["data"]:
 
-        msg += "\n"
+            symbol = stock["symbol"]
+            qty = stock["quantity"]
+
+            msg += f"{symbol} : {qty}\n"
+
+    except:
+
+        msg = "❌ DNSE format lỗi"
 
     await update.message.reply_text(msg)
-
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -178,21 +166,12 @@ async def sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg)
 
-
-# ==============================
-# HANDLERS
-# ==============================
 tg_app.add_handler(CommandHandler("start", start))
 tg_app.add_handler(CommandHandler("portfolio", portfolio))
 tg_app.add_handler(CommandHandler("add", add))
 tg_app.add_handler(CommandHandler("sync", sync))
 
-
-# ==============================
-# FASTAPI
-# ==============================
 fastapi_app = FastAPI()
-
 
 @fastapi_app.on_event("startup")
 async def startup():
@@ -218,10 +197,6 @@ async def telegram_webhook(req: Request):
 
     return {"ok": True}
 
-
-# ==============================
-# RUN
-# ==============================
 if __name__ == "__main__":
 
     uvicorn.run(
