@@ -6,6 +6,9 @@ import uvicorn
 from fastapi import FastAPI, Request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import hmac
+import hashlib
+import time
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -23,7 +26,15 @@ sector_bank = {
     "SME": "MBB",
     "Tiêu dùng": "HDB"
 }
+def dnse_signature(payload):
 
+    secret = os.getenv("DNSE_SECRET").encode()
+
+    return hmac.new(
+        secret,
+        payload.encode(),
+        hashlib.sha256
+    ).hexdigest()
 def load_data():
 
     if not os.path.exists(DATA_FILE):
@@ -53,11 +64,24 @@ def save_data(data):
 
 def get_dnse_portfolio():
 
-    url = "https://api.dnse.com.vn/positions"
+    api_key = os.getenv("DNSE_API_KEY")
+    secret = os.getenv("DNSE_SECRET")
+    account = os.getenv("DNSE_ACCOUNT")
+
+    timestamp = str(int(time.time()*1000))
+
+    payload = f"accountNo={account}&timestamp={timestamp}"
+
+    signature = hmac.new(
+        secret.encode(),
+        payload.encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    url = f"https://api.dnse.com.vn/v2/positions?{payload}&signature={signature}"
 
     headers = {
-        "Authorization": f"Bearer {DNSE_TOKEN}",
-        "Content-Type": "application/json"
+        "X-API-KEY": api_key
     }
 
     try:
